@@ -1,0 +1,21 @@
+{
+  "name": "mr-solarys-whatsapp-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vrai bot WhatsApp (Baileys) - a heberger sur Railway/Render/VPS, PAS sur Vercel.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "@hapi/boom": "^10.0.1",
+    "pino": "^9.4.0",
+    "express": "^4.21.0",
+    "dotenv": "^16.4.7",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "trigger": "regles",
+    "type": "text",
+    "code": "📜 Respectez tout le monde, pas de spam, pas de pub non autorisée.",
+    "description": "Règles officielles du groupe"
+  },
+  {
+    "trigger": "owner",
+    "type": "text",
+    "code": "👑 Créateur du bot : MR SOLARYS dev.",
+    "description": "Contact officiel du créateur"
+  }
+]
