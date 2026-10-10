@@ -35,6 +35,10 @@ if (!API_KEY) {
 
 let sock = null;
 let connectionStatus = 'DISCONNECTED';
+let pendingPairNumber = null;
+let lastPairingCode = null;
+let pairingError = null;
+let isManualRestart = false;
 
 function loadCustomCommands() {
   try {
@@ -171,6 +175,23 @@ async function startSock() {
 
   sock.ev.on('creds.update', saveCreds);
 
+  if (pendingPairNumber && !sock.authState.creds.registered) {
+    const phoneToUse = pendingPairNumber;
+    pendingPairNumber = null;
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(phoneToUse);
+        lastPairingCode = code;
+        pairingError = null;
+        connectionStatus = 'PAIRING_CODE_READY';
+        console.log('📱 Code de pairing réel généré par WhatsApp :', code);
+      } catch (e) {
+        pairingError = e.message;
+        console.error('Erreur requestPairingCode:', e.message);
+      }
+    }, 1500);
+  }
+
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
 
@@ -182,6 +203,7 @@ async function startSock() {
 
     if (connection === 'open') {
       connectionStatus = 'CONNECTED';
+      lastPairingCode = null;
       console.log('✅ WhatsApp connecté avec succès.');
       if (OWNER_NUMBER) {
         sock.sendMessage(`${OWNER_NUMBER}@s.whatsapp.net`, {
@@ -192,6 +214,10 @@ async function startSock() {
 
     if (connection === 'close') {
       connectionStatus = 'DISCONNECTED';
+      if (isManualRestart) {
+        isManualRestart = false;
+        return;
+      }
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       console.log('⚠️ Connexion fermée. Code :', statusCode, '— Reconnexion :', shouldReconnect);
@@ -237,17 +263,30 @@ app.post('/pair', auth, async (req, res) => {
   const { phone } = req.body || {};
   const clean = (phone || '').replace(/[^0-9]/g, '');
   if (!clean) return res.status(400).json({ error: 'Numéro invalide.' });
-  if (!sock) return res.status(503).json({ error: 'Le socket WhatsApp n\'est pas encore prêt, réessayez dans quelques secondes.' });
-  if (sock.authState?.creds?.registered) {
+  if (sock?.authState?.creds?.registered) {
     return res.status(409).json({ error: 'Une session WhatsApp est déjà active. Déconnectez-la avant d\'en relier une nouvelle.' });
   }
-  try {
-    const code = await sock.requestPairingCode(clean);
-    res.json({ code });
-  } catch (e) {
-    console.error('Erreur requestPairingCode:', e.message);
-    res.status(500).json({ error: e.message });
+
+  pendingPairNumber = clean;
+  lastPairingCode = null;
+  pairingError = null;
+
+  if (sock) {
+    isManualRestart = true;
+    try { sock.end(undefined); } catch { /* déjà fermé, pas grave */ }
   }
+  startSock().catch((e) => {
+    pairingError = e.message;
+  });
+
+  const startTime = Date.now();
+  const TIMEOUT_MS = 25000;
+  while (Date.now() - startTime < TIMEOUT_MS) {
+    if (lastPairingCode) return res.json({ code: lastPairingCode });
+    if (pairingError) return res.status(500).json({ error: pairingError });
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  res.status(504).json({ error: 'Délai dépassé en attendant le code WhatsApp. Réessayez dans un instant.' });
 });
 
 app.post('/send', auth, async (req, res) => {
